@@ -29,7 +29,7 @@ describe('bundle', () => {
                             z: 99,
                             width: 8,
                             height: 12,
-                            coverImageUrl: '7f446feddbf04b16b11cb08bbbab12d8423dfe254ebc5e9885fc62ffb896b359.png',
+                            coverImageUrl: 'wrong-id.png',
                         },
                     },
                 },
