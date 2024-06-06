@@ -1,7 +1,9 @@
 import { readFile } from 'node:fs/promises'
 import AdmZip from 'adm-zip'
-import { bundle, addResourcesToArchive, generateToken } from './bundle'
+import { bundle, generateToken } from './bundle'
 import * as path from 'node:path'
+import { localResolver } from './localResolver'
+import { cardResolver } from './cardResolver'
 
 const main = async (args: string[]): Promise<number> => {
     const [source, target] = args
@@ -12,12 +14,14 @@ const main = async (args: string[]): Promise<number> => {
 
     const data = JSON.parse((await readFile(source)).toString())
     const basePath = path.dirname(source)
-    const result = await bundle(data, basePath)
+    const result = await bundle(data, basePath, { ...localResolver, ...cardResolver })
 
     const zip = new AdmZip()
     zip.addFile('.token', Buffer.from(generateToken()))
     zip.addFile('__data.json', Buffer.from(JSON.stringify(result.data)))
-    addResourcesToArchive(zip, result.resources)
+    for (const [key, { content }] of Object.entries(result.resources)) {
+        zip.addFile(key, content)
+    }
     await new Promise<void>((resolve, reject) => {
         zip.writeZip(target, (err) => (err == null ? resolve() : reject(err)))
     })

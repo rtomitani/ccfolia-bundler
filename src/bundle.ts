@@ -1,33 +1,33 @@
 import { createHash, randomBytes } from 'node:crypto'
-import mime from 'mime'
-import AdmZip from 'adm-zip'
-import { join } from 'node:path'
-import { cwd } from 'node:process'
-import { readFile } from 'node:fs/promises'
 
-const bundlePrefix = 'bundle://'
+const resolveSymbol = '$'
+
+export type Resolver = (data: Object, basePath: string) => Promise<BundleInnerResult>
+export type Resolvers = Record<string, Resolver>
 
 export type RoomData = {
     resources: Record<string, { type: string }>
-} & Record<string, unknown>
+    [key: string]: unknown
+}
 
-export type Resources = Record<string, { sourcePath: string; type: string }>
+export type Resources = Record<string, { content: Buffer; type: string }>
 
 export const bundle = async (
     data: RoomData,
-    basePath: string
+    basePath: string,
+    resolvers: Resolvers
 ): Promise<{
     data: RoomData
     resources: Resources
 }> => {
     const woResources = Object.fromEntries(Object.entries(data).filter(([key]) => key !== 'resources'))
-    const bundled = await bundleInner(woResources, basePath)
+    const bundled = await bundleInner(woResources, basePath, resolvers)
     const roomResources = Object.entries(bundled.resources).reduce((acc, [key, { type }]) => ({ ...acc, [key]: { type } }), {})
 
     return {
         data: {
             ...(bundled.data as RoomData),
-            resources: roomResources,
+            resources: { ...data.resources, ...roomResources },
         },
         resources: bundled.resources,
     }
@@ -35,28 +35,32 @@ export const bundle = async (
 
 type BundleInnerResult = { data: unknown; resources: Resources }
 
-const bundleInner = async (data: unknown, basePath: string): Promise<BundleInnerResult> => {
+const bundleInner = async (data: unknown, basePath: string, resolvers: Resolvers): Promise<BundleInnerResult> => {
     if (typeof data !== 'object' || data === null) return { data, resources: {} }
     if (Array.isArray(data)) {
-        const results = await Promise.all(data.map((d) => bundleInner(d, basePath)))
+        const results = await Promise.all(data.map((d) => bundleInner(d, basePath, resolvers)))
         return {
             data: results.map((r) => r.data),
             resources: results.reduce((acc, r) => ({ ...acc, ...r.resources }), {}),
         }
     } else {
+        if (resolveSymbol in data) {
+            const resolverName = data[resolveSymbol]
+            if (typeof resolverName !== 'string') throw new TypeError('resolverName ($) must be a string')
+            if (!(resolverName in resolvers)) throw new TypeError(`Resolver "${resolverName}" not found`)
+            const result = await resolvers[resolverName](data, basePath)
+            return {
+                data: result.data,
+                resources: result.resources,
+            }
+        }
         let resources: Resources = {}
         const entries = await Promise.all(
             Object.entries(data).map(async ([key, value]) => {
                 if (typeof value === 'object' && value !== null) {
-                    const { data, resources: innerResources } = await bundleInner(value, basePath)
+                    const { data, resources: innerResources } = await bundleInner(value, basePath, resolvers)
                     resources = { ...resources, ...innerResources }
                     return [key, data]
-                } else if (typeof value === 'string' && value.startsWith(bundlePrefix)) {
-                    const sourcePath = getPathFromBundleUri(value, basePath)
-                    const buffer = await readFile(join(cwd(), sourcePath))
-                    const dest = `${getSha256FromBuffer(buffer)}.${sourcePath.split('.').pop()}`
-                    resources[dest] = { sourcePath, type: mime.getType(dest) || 'application/octet-stream' }
-                    return [key, dest]
                 } else {
                     return [key, value]
                 }
@@ -69,22 +73,9 @@ const bundleInner = async (data: unknown, basePath: string): Promise<BundleInner
     }
 }
 
-export const addResourcesToArchive = (zip: AdmZip, resources: Resources): AdmZip => {
-    for (const [dest, { sourcePath }] of Object.entries(resources)) {
-        zip.addLocalFile(sourcePath, '', dest)
-    }
-    return zip
+export const getResourceKey = (content: Buffer, ext?: string): string => {
+    const hash = createHash('sha256').update(content).digest('hex')
+    return ext == null ? hash : `${hash}.${ext}`
 }
 
 export const generateToken = (): string => `0.${randomBytes(32).toString('hex')}`
-
-const getPathFromBundleUri = (uri: string, basePath: string): string => {
-    if (!uri.startsWith(bundlePrefix)) throw new TypeError('Invalid bundle URI')
-    return join(basePath, uri.replace(bundlePrefix, ''))
-}
-
-const getSha256FromBuffer = (buffer: Buffer): string => {
-    const hash = createHash('sha256')
-    hash.update(buffer)
-    return hash.digest('hex')
-}
