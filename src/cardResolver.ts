@@ -2,8 +2,37 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { cwd } from 'node:process'
 import { Resolver, getResourceKey } from './bundle'
-import { createCanvas, loadImage, CanvasRenderingContext2D } from 'canvas'
+import { createCanvas, loadImage, CanvasRenderingContext2D, registerFont } from 'canvas'
 import mime from 'mime'
+import { z } from 'zod'
+
+const cardSchema = z.object({
+    baseImagePath: z.string(),
+    font: z
+        .union([
+            z.object({
+                type: z.literal('name'),
+                name: z.string(),
+            }),
+            z.object({
+                type: z.literal('path'),
+                path: z.string(),
+                family: z.string(),
+            }),
+        ])
+        .and(
+            z.object({
+                maxSize: z.number(),
+            })
+        ),
+    padding: z.number(),
+    contents: z.array(
+        z.object({
+            title: z.string(),
+            memo: z.string().optional(),
+        })
+    ),
+})
 
 const supportedMimeTypes = ['image/jpeg', 'image/png'] as const
 type SupportedMimeType = (typeof supportedMimeTypes)[number]
@@ -11,21 +40,25 @@ type SupportedMimeType = (typeof supportedMimeTypes)[number]
 const isSupportedMimeType = (type: string): type is SupportedMimeType => supportedMimeTypes.includes(type as SupportedMimeType)
 
 const resolveCard: Resolver = async (data, basePath) => {
-    if (!('baseImagePath' in data)) throw new TypeError('cards resolver requires a baseImagePath')
-    if (typeof data.baseImagePath !== 'string') throw new TypeError('baseImagePath must be a string')
-    if (!('contents' in data)) throw new TypeError('cards resolver requires contents')
-    if (!Array.isArray(data.contents)) throw new TypeError('contents must be an array')
+    const { baseImagePath, contents, font, padding } = cardSchema.parse(data)
 
-    const baseImage = await readFile(join(cwd(), basePath, data.baseImagePath))
-    const ext = data.baseImagePath.split('.').pop()
+    // Load base image
+    const baseImage = await readFile(join(cwd(), basePath, baseImagePath))
+    const ext = baseImagePath.split('.').pop()
     const type = mime.getType(ext ?? '') ?? ''
     if (!isSupportedMimeType(type)) throw new TypeError('Unsupported image type')
 
+    // Load font if specified
+    if (font.type === 'path') {
+        const fontPath = join(cwd(), basePath, font.path)
+        registerFont(fontPath, { family: font.family })
+    }
+
     const cards = await Promise.all(
-        data.contents.map(async ({ title, memo }) => {
+        contents.map(async ({ title, memo }) => {
             if (title == null) throw new TypeError('title is required')
             if (typeof title !== 'string') throw new TypeError('title must be a string')
-            const image = await generateCardImage(baseImage, title, type)
+            const image = await generateCardImage(baseImage, title, type, { padding, font: { name: font.type === 'name' ? font.name : font.family, maxSize: font.maxSize } })
             const resourceKey = getResourceKey(image, ext)
             return {
                 image,
@@ -42,14 +75,14 @@ const resolveCard: Resolver = async (data, basePath) => {
     }
 }
 
-const generateCardImage = async (baseImage: Buffer, title: string, mimeType: SupportedMimeType): Promise<Buffer> => {
+const generateCardImage = async (baseImage: Buffer, title: string, mimeType: SupportedMimeType, config: { padding: number; font: { name: string; maxSize: number } }): Promise<Buffer> => {
     const image = await loadImage(baseImage)
     const canvas = createCanvas(image.width, image.height)
     const ctx = canvas.getContext('2d')
     ctx.drawImage(image, 0, 0)
     ctx.fillStyle = 'white'
 
-    tategaki(ctx, title, { font: 'Arial', padding: 10, maxFontSize: 80 })
+    tategaki(ctx, title, { font: config.font.name, padding: config.padding, maxFontSize: config.font.maxSize })
 
     return mimeType === 'image/jpeg' ? canvas.toBuffer('image/jpeg') : canvas.toBuffer('image/png')
 }

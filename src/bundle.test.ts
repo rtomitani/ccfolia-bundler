@@ -160,6 +160,12 @@ describe('cardResolver', () => {
                         items: {
                             $: 'card',
                             baseImagePath: './mock.png',
+                            font: {
+                                type: 'name',
+                                name: 'Arial',
+                                maxSize: 80,
+                            },
+                            padding: 20,
                             contents: [{ title: 'Card 1', memo: 'This is card 1' }],
                         },
                     },
@@ -195,5 +201,42 @@ describe('cardResolver', () => {
             type: 'image/png',
         })
         expect(Object.values(result.resources)).toHaveLength(1)
+    })
+
+    test('fails if baseImagePath symbol is not provided', async () => {
+        const data: RoomData = {
+            entities: {
+                decks: {
+                    Cd5XyQIOyu0VSl79yu5h: {
+                        items: {
+                            $: 'card',
+                            contents: [{ title: 'Card 1', memo: 'This is card 1' }],
+                        },
+                    },
+                },
+            },
+            resources: {},
+        }
+
+        expect(bundle(data, './mock', { ...cardResolver })).rejects.toThrowError()
+    })
+
+    test('fails if base image is not found', async () => {
+        const data: RoomData = {
+            entities: {
+                decks: {
+                    Cd5XyQIOyu0VSl79yu5h: {
+                        items: {
+                            $: 'card',
+                            baseImagePath: './not-exist.png',
+                            contents: [{ title: 'Card 1', memo: 'This is card 1' }],
+                        },
+                    },
+                },
+            },
+            resources: {},
+        }
+
+        expect(bundle(data, './mock', { ...cardResolver })).rejects.toThrowError()
     })
 })
