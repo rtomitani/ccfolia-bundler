@@ -163,6 +163,7 @@ describe('cardResolver', () => {
                             font: {
                                 type: 'name',
                                 name: 'Arial',
+                                color: 'black',
                                 maxSize: 80,
                             },
                             padding: 20,
@@ -210,6 +211,13 @@ describe('cardResolver', () => {
                     Cd5XyQIOyu0VSl79yu5h: {
                         items: {
                             $: 'card',
+                            font: {
+                                type: 'name',
+                                name: 'Arial',
+                                color: 'black',
+                                maxSize: 80,
+                            },
+                            padding: 20,
                             contents: [{ title: 'Card 1', memo: 'This is card 1' }],
                         },
                     },
@@ -229,6 +237,13 @@ describe('cardResolver', () => {
                         items: {
                             $: 'card',
                             baseImagePath: './not-exist.png',
+                            font: {
+                                type: 'name',
+                                name: 'Arial',
+                                color: 'black',
+                                maxSize: 80,
+                            },
+                            padding: 20,
                             contents: [{ title: 'Card 1', memo: 'This is card 1' }],
                         },
                     },

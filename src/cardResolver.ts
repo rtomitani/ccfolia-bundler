@@ -22,6 +22,7 @@ const cardSchema = z.object({
         ])
         .and(
             z.object({
+                color: z.string(),
                 maxSize: z.number(),
             })
         ),
@@ -58,7 +59,7 @@ const resolveCard: Resolver = async (data, basePath) => {
         contents.map(async ({ title, memo }) => {
             if (title == null) throw new TypeError('title is required')
             if (typeof title !== 'string') throw new TypeError('title must be a string')
-            const image = await generateCardImage(baseImage, title, type, { padding, font: { name: font.type === 'name' ? font.name : font.family, maxSize: font.maxSize } })
+            const image = await generateCardImage(baseImage, title, type, { padding, font: { ...font, name: font.type === 'name' ? font.name : font.family } })
             const resourceKey = getResourceKey(image, ext)
             return {
                 image,
@@ -75,12 +76,17 @@ const resolveCard: Resolver = async (data, basePath) => {
     }
 }
 
-const generateCardImage = async (baseImage: Buffer, title: string, mimeType: SupportedMimeType, config: { padding: number; font: { name: string; maxSize: number } }): Promise<Buffer> => {
+const generateCardImage = async (
+    baseImage: Buffer,
+    title: string,
+    mimeType: SupportedMimeType,
+    config: { padding: number; font: { name: string; color: string; maxSize: number } }
+): Promise<Buffer> => {
     const image = await loadImage(baseImage)
     const canvas = createCanvas(image.width, image.height)
     const ctx = canvas.getContext('2d')
     ctx.drawImage(image, 0, 0)
-    ctx.fillStyle = 'white'
+    ctx.fillStyle = config.font.color
 
     tategaki(ctx, title, { font: config.font.name, padding: config.padding, maxFontSize: config.font.maxSize })
 
