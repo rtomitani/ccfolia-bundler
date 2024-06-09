@@ -92,6 +92,8 @@ function tategaki(ctx: CanvasRenderingContext2D, text: string, config: { font: s
     const maxLength = Math.max(...lines.map((line) => line.length))
     const fontSize = Math.floor(Math.min((ctx.canvas.height - config.padding * 2) / maxLength, config.maxFontSize))
 
+    ctx.save()
+
     ctx.font = `${fontSize}px ${config.font}`
 
     const characterSize = ctx.measureText('あ').width
@@ -103,10 +105,23 @@ function tategaki(ctx: CanvasRenderingContext2D, text: string, config: { font: s
 
         const x = (ctx.canvas.width + lines.length * characterSize) / 2 - characterSize * (i + 1)
         for (let j = 0; j < line.length; j++) {
+            const charsToBeRotated = ['。', '、', '「', '」', '（', '）', 'ー', '・', '゛', '゜']
             const y = startY + characterSize * (j + 1)
-            ctx.fillText(line[j], x, y)
+
+            ctx.save()
+
+            ctx.translate(x, y)
+            if (charsToBeRotated.includes(line[j])) {
+                ctx.translate(characterSize, 0)
+                ctx.rotate(-Math.PI / 2)
+            }
+            ctx.fillText(line[j], 0, 0)
+
+            ctx.restore()
         }
     }
+
+    ctx.restore()
 }
 
 const generateItemKey = (): string => {
