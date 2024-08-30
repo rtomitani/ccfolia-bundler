@@ -1,19 +1,37 @@
 import { describe, expect, test } from 'vitest'
-import { RoomData, bundle, addResourcesToArchive, generateToken } from './bundle'
-import AdmZip from 'adm-zip'
+import { RoomData, bundle } from './bundle'
+import { localResolver } from './localResolver'
+import { cardResolver } from './cardResolver'
 
 describe('bundle', () => {
-    test('should replace bundle URIs in room data and extact them to corresponding array', async () => {
+    test('returns the same data if no resources to be resolved', async () => {
         const data: RoomData = {
             entities: {
                 decks: {
                     Cd5XyQIOyu0VSl79yu5h: {
-                        x: 7,
-                        y: -35,
-                        z: 99,
-                        width: 8,
-                        height: 12,
-                        coverImageUrl: 'bundle://mock.png',
+                        coverImageUrl: '7f446feddbf04b16b11cb08bbbab12d8423dfe254ebc5e9885fc62ffb896b359.png',
+                    },
+                },
+            },
+            resources: {
+                '7f446feddbf04b16b11cb08bbbab12d8423dfe254ebc5e9885fc62ffb896b359.png': {
+                    type: 'image/png',
+                },
+            },
+        }
+
+        expect(bundle(data, './mock', {})).resolves.toMatchObject({ data, resources: {} })
+    })
+
+    test('resolves local paths and extract them to corresponding array', async () => {
+        const data: RoomData = {
+            entities: {
+                decks: {
+                    Cd5XyQIOyu0VSl79yu5h: {
+                        coverImageUrl: {
+                            $: 'local',
+                            path: 'mock.png',
+                        },
                     },
                 },
             },
@@ -24,11 +42,6 @@ describe('bundle', () => {
                 entities: {
                     decks: {
                         Cd5XyQIOyu0VSl79yu5h: {
-                            x: 7,
-                            y: -35,
-                            z: 99,
-                            width: 8,
-                            height: 12,
                             coverImageUrl: '7f446feddbf04b16b11cb08bbbab12d8423dfe254ebc5e9885fc62ffb896b359.png',
                         },
                     },
@@ -41,40 +54,204 @@ describe('bundle', () => {
             },
             resources: {
                 '7f446feddbf04b16b11cb08bbbab12d8423dfe254ebc5e9885fc62ffb896b359.png': {
-                    sourcePath: 'mock/mock.png',
+                    content: expect.any(Buffer),
                 },
             },
         }
 
-        expect(bundle(data, './mock')).resolves.toMatchObject(expected)
+        expect(bundle(data, './mock', { ...localResolver })).resolves.toMatchObject(expected)
     })
 
-    test('should archive the resources at "mock/mock.png"', () => {
-        const zip = addResourcesToArchive(new AdmZip(), {
-            'cf0bf8eab6ada406dba81fe4ce0ccdaec4deab763469bd3ea786fff14b4d0b05.png': {
-                sourcePath: 'mock/mock.png',
-                type: 'image/png',
-            },
-        })
-
-        const entries = zip.getEntries()
-        expect(entries).toHaveLength(1)
-        expect(entries[0].entryName).toBe('cf0bf8eab6ada406dba81fe4ce0ccdaec4deab763469bd3ea786fff14b4d0b05.png')
-    }),
-        test('should archive the resources at "./mock/mock.png', () => {
-            const zip = addResourcesToArchive(new AdmZip(), {
-                'cf0bf8eab6ada406dba81fe4ce0ccdaec4deab763469bd3ea786fff14b4d0b05.png': {
-                    sourcePath: './mock/mock.png',
-                    type: 'image/png',
+    test('resolves duplicate local files as a single resource', async () => {
+        const data: RoomData = {
+            entities: {
+                decks: {
+                    Cd5XyQIOyu0VSl79yu5h: {
+                        coverImageUrl: {
+                            $: 'local',
+                            path: 'mock.png',
+                        },
+                        items: {
+                            Ghk029mKGwoZZqCTYLnw: {
+                                imageUrl: {
+                                    $: 'local',
+                                    path: 'mock.png',
+                                },
+                            },
+                        },
+                    },
                 },
-            })
+            },
+            resources: {},
+        }
+        const expected = {
+            data: {
+                entities: {
+                    decks: {
+                        Cd5XyQIOyu0VSl79yu5h: {
+                            coverImageUrl: '7f446feddbf04b16b11cb08bbbab12d8423dfe254ebc5e9885fc62ffb896b359.png',
+                            items: {
+                                Ghk029mKGwoZZqCTYLnw: {
+                                    imageUrl: '7f446feddbf04b16b11cb08bbbab12d8423dfe254ebc5e9885fc62ffb896b359.png',
+                                },
+                            },
+                        },
+                    },
+                },
+                resources: {
+                    '7f446feddbf04b16b11cb08bbbab12d8423dfe254ebc5e9885fc62ffb896b359.png': {
+                        type: 'image/png',
+                    },
+                },
+            },
+            resources: {
+                '7f446feddbf04b16b11cb08bbbab12d8423dfe254ebc5e9885fc62ffb896b359.png': {
+                    content: expect.any(Buffer),
+                },
+            },
+        }
 
-            const entries = zip.getEntries()
-            expect(entries).toHaveLength(1)
-            expect(entries[0].entryName).toBe('cf0bf8eab6ada406dba81fe4ce0ccdaec4deab763469bd3ea786fff14b4d0b05.png')
-        }),
-        test('should generate a random token', () => {
-            const token = generateToken()
-            expect(token).toMatch(/^0\.[0-9a-f]{64}$/)
+        expect(bundle(data, './mock', { ...localResolver })).resolves.toMatchObject(expected)
+    })
+
+    test('errors if no corresponding resolver is provided', async () => {
+        const data: RoomData = {
+            entities: {
+                decks: {
+                    Cd5XyQIOyu0VSl79yu5h: {
+                        coverImageUrl: {
+                            $: 'local',
+                            path: 'mock.png',
+                        },
+                    },
+                },
+            },
+            resources: {},
+        }
+
+        expect(bundle(data, './mock', {})).rejects.toThrowError()
+    })
+
+    test('errors if file is not found', async () => {
+        const data: RoomData = {
+            entities: {
+                decks: {
+                    Cd5XyQIOyu0VSl79yu5h: {
+                        coverImageUrl: {
+                            $: 'local',
+                            path: 'not-exist.png',
+                        },
+                    },
+                },
+            },
+            resources: {},
+        }
+
+        expect(bundle(data, './mock', { ...localResolver })).rejects.toThrowError()
+    })
+})
+
+describe('cardResolver', () => {
+    test('generates cards and bundle them', async () => {
+        const data: RoomData = {
+            entities: {
+                decks: {
+                    Cd5XyQIOyu0VSl79yu5h: {
+                        items: {
+                            $: 'card',
+                            baseImagePath: './mock.png',
+                            font: {
+                                type: 'name',
+                                name: 'Arial',
+                                color: 'black',
+                                maxSize: 80,
+                            },
+                            padding: 20,
+                            contents: [{ title: 'Card 1', memo: 'This is card 1' }],
+                        },
+                    },
+                },
+            },
+            resources: {},
+        }
+        const expected = {
+            data: {
+                entities: {
+                    decks: {
+                        Cd5XyQIOyu0VSl79yu5h: {
+                            items: expect.any(Object),
+                        },
+                    },
+                },
+                resources: expect.any(Object),
+            },
+            resources: expect.any(Object),
+        }
+
+        const result = await bundle(data, './mock', { ...cardResolver })
+        expect(result).toMatchObject(expected)
+
+        const items = (result as any).data.entities.decks.Cd5XyQIOyu0VSl79yu5h.items
+        expect(Object.values(items)).toHaveLength(1)
+        expect(Object.values(items)[0]).toMatchObject({
+            imageUrl: expect.any(String),
+            memo: 'This is card 1',
         })
+        expect(Object.values(result.data.resources)).toHaveLength(1)
+        expect(Object.values(result.data.resources)[0]).toMatchObject({
+            type: 'image/png',
+        })
+        expect(Object.values(result.resources)).toHaveLength(1)
+    })
+
+    test('fails if baseImagePath symbol is not provided', async () => {
+        const data: RoomData = {
+            entities: {
+                decks: {
+                    Cd5XyQIOyu0VSl79yu5h: {
+                        items: {
+                            $: 'card',
+                            font: {
+                                type: 'name',
+                                name: 'Arial',
+                                color: 'black',
+                                maxSize: 80,
+                            },
+                            padding: 20,
+                            contents: [{ title: 'Card 1', memo: 'This is card 1' }],
+                        },
+                    },
+                },
+            },
+            resources: {},
+        }
+
+        expect(bundle(data, './mock', { ...cardResolver })).rejects.toThrowError()
+    })
+
+    test('fails if base image is not found', async () => {
+        const data: RoomData = {
+            entities: {
+                decks: {
+                    Cd5XyQIOyu0VSl79yu5h: {
+                        items: {
+                            $: 'card',
+                            baseImagePath: './not-exist.png',
+                            font: {
+                                type: 'name',
+                                name: 'Arial',
+                                color: 'black',
+                                maxSize: 80,
+                            },
+                            padding: 20,
+                            contents: [{ title: 'Card 1', memo: 'This is card 1' }],
+                        },
+                    },
+                },
+            },
+            resources: {},
+        }
+
+        expect(bundle(data, './mock', { ...cardResolver })).rejects.toThrowError()
+    })
 })
